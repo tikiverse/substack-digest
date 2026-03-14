@@ -28,7 +28,7 @@ SMTP_PASS = os.environ["SMTP_PASS"]
 EMAIL_TO = os.environ.get("EMAIL_TO", SMTP_USER)  # defaults to sender
 LOOKBACK_HOURS = int(os.environ.get("LOOKBACK_HOURS", "26"))  # slightly >24 to avoid gaps
 MAX_CHARS_PER_POST = int(os.environ.get("MAX_CHARS_PER_POST", "8000"))
-CLAUDE_MODEL = os.environ.get("CLAUDE_MODEL", "claude-sonnet-4-20250514")
+CLAUDE_MODEL = os.environ.get("CLAUDE_MODEL", "claude-sonnet-4-5-20250929")
 
 # Load feeds from feeds.json (list of Substack URLs or RSS URLs)
 FEEDS_FILE = Path(__file__).parent / "feeds.json"
@@ -91,6 +91,10 @@ def fetch_new_posts(feeds: list[str], since: datetime) -> list[dict]:
 
 def summarize_post(post: dict) -> str:
     """Use Claude to summarize a single post."""
+    content = post["content"].strip()
+    if not content or len(content) < 50:
+        return f"<em>(Post too short to summarize — <a href='{post['link']}'>read the original</a>)</em>"
+
     prompt = f"""Summarize the following newsletter post in 3-5 concise bullet points.
 Focus on the key insights, arguments, or news. Be specific — no filler.
 
@@ -98,7 +102,7 @@ Title: {post['title']}
 Author/Blog: {post['blog']}
 
 Content:
-{post['content']}"""
+{content}"""
 
     resp = httpx.post(
         "https://api.anthropic.com/v1/messages",
@@ -114,7 +118,10 @@ Content:
         },
         timeout=60,
     )
-    resp.raise_for_status()
+    if resp.status_code != 200:
+        body = resp.text
+        print(f"   ❌ API error {resp.status_code}: {body[:500]}")
+        resp.raise_for_status()
     data = resp.json()
     return data["content"][0]["text"]
 
