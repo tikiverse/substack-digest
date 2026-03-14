@@ -80,9 +80,13 @@ def fetch_new_posts(feeds: list[str], since: datetime) -> list[dict]:
                 # Strip HTML tags (basic)
                 content = re.sub(r"<[^>]+>", " ", content)
                 content = re.sub(r"\s+", " ", content).strip()
+                # Extract description (the short blurb from the RSS <description> tag)
+                description = re.sub(r"<[^>]+>", " ", entry.get("summary", ""))
+                description = re.sub(r"\s+", " ", description).strip()
                 feed_posts.append({
                     "blog": blog_title,
                     "title": entry.get("title", "Untitled"),
+                    "description": description[:300],
                     "link": entry.get("link", ""),
                     "published": published.isoformat() if published else "Unknown",
                     "content": content[:MAX_CHARS_PER_POST],
@@ -104,8 +108,9 @@ def summarize_post(post: dict) -> str:
     if not content or len(content) < 50:
         return f"<em>(Post too short to summarize — <a href='{post['link']}'>read the original</a>)</em>"
 
-    prompt = f"""Summarize the following newsletter post in 3-5 concise bullet points.
-Focus on the key insights, arguments, or news. Be specific — no filler.
+    prompt = f"""Summarize the following newsletter post as a markdown bullet list (3-5 bullets).
+You may optionally include 1-2 sentences of commentary or context before or after the list.
+Do NOT use any headers or headings. Be specific — no filler.
 
 Title: {post['title']}
 Author/Blog: {post['blog']}
@@ -144,7 +149,9 @@ def build_html_email(posts_with_summaries: list[dict], date_str: str) -> str:
   body {{ font-family: Georgia, serif; max-width: 640px; margin: 0 auto; padding: 20px; color: #1a1a1a; }}
   h1 {{ font-size: 22px; border-bottom: 2px solid #111; padding-bottom: 8px; }}
   .post {{ margin-bottom: 28px; }}
-  .post h2 {{ font-size: 17px; margin: 0 0 2px 0; }}
+  .post .blog-name {{ font-size: 16px; color: #0079ff; margin: 0 0 2px 0; font-weight: bold; }}
+  .post h2 {{ font-size: 17px; margin: 0 0 4px 0; }}
+  .post .description {{ font-size: 14px; color: #666; margin: 0 0 8px 0; }}
   .post .meta {{ font-size: 13px; color: #666; margin-bottom: 8px; }}
   .post .meta a {{ color: #444; }}
   .post .summary {{ font-size: 15px; line-height: 1.6; color: #333; }}
@@ -159,10 +166,12 @@ def build_html_email(posts_with_summaries: list[dict], date_str: str) -> str:
     for item in posts_with_summaries:
         post = item["post"]
         summary = item["summary"]
+        description_html = f'\n  <div class="description">{post["description"]}</div>' if post.get("description") else ""
         html += f"""\
 <div class="post">
-  <h2>{post['title']}</h2>
-  <div class="meta">{post['blog']} · <a href="{post['link']}">Read full post →</a></div>
+  <div class="blog-name">{post['blog']}</div>
+  <h2>{post['title']}</h2>{description_html}
+  <div class="meta"><a href="{post['link']}">Read full post →</a></div>
   <div class="summary">{summary}</div>
 </div>
 """
@@ -178,8 +187,11 @@ def build_plain_email(posts_with_summaries: list[dict], date_str: str) -> str:
     lines = [f"SUBSTACK DIGEST — {date_str}", f"{len(posts_with_summaries)} new posts", ""]
     for item in posts_with_summaries:
         post = item["post"]
+        lines.append(f"[{post['blog']}]")
         lines.append(f"### {post['title']}")
-        lines.append(f"    {post['blog']} — {post['link']}")
+        if post.get("description"):
+            lines.append(f"    {post['description']}")
+        lines.append(f"    {post['link']}")
         lines.append(item["summary"])
         lines.append("")
     return "\n".join(lines)
