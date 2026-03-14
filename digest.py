@@ -7,6 +7,7 @@ using Claude, and emails you a daily digest.
 
 import os
 import json
+import re
 import smtplib
 import hashlib
 from datetime import datetime, timedelta, timezone
@@ -54,7 +55,6 @@ def load_feeds() -> list[str]:
 
 def fetch_new_posts(feeds: list[str], since: datetime) -> list[dict]:
     """Fetch posts published after `since` from all feeds."""
-    import re
 
     def _fetch_feed(feed_url):
         feed_posts = []
@@ -109,6 +109,8 @@ def summarize_post(post: dict) -> str:
         return f"<em>(Post too short to summarize — <a href='{post['link']}'>read the original</a>)</em>"
 
     prompt = f"""Summarize the following newsletter post as a markdown bullet list (3-5 bullets).
+Each bullet MUST be on its own line starting with "- ". Do NOT use inline bullets.
+**Bold** key terms, names, concepts, or phrases in each bullet to make scanning easier.
 You may optionally include 1-2 sentences of commentary or context before or after the list.
 Do NOT use any headers or headings. Be specific — no filler.
 
@@ -137,7 +139,12 @@ Content:
         print(f"   ❌ API error {resp.status_code}: {body[:500]}")
         raise RuntimeError(f"API error {resp.status_code}: {body[:500]}")
     data = resp.json()
-    return markdown.markdown(data["content"][0]["text"])
+    text = data["content"][0]["text"]
+    # Normalize unicode bullets (•) and inline bullets to proper markdown list items
+    text = re.sub(r"[•·]\s*", "- ", text)
+    # Ensure each bullet is on its own line
+    text = re.sub(r"(?<!\n)- ", "\n- ", text)
+    return markdown.markdown(text.strip())
 
 
 def build_html_email(posts_with_summaries: list[dict], date_str: str) -> str:
