@@ -13,6 +13,7 @@ from datetime import datetime, timedelta, timezone
 from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
 from pathlib import Path
+import markdown
 
 import feedparser
 import httpx
@@ -121,9 +122,9 @@ Content:
     if resp.status_code != 200:
         body = resp.text
         print(f"   ❌ API error {resp.status_code}: {body[:500]}")
-        resp.raise_for_status()
+        raise RuntimeError(f"API error {resp.status_code}: {body[:500]}")
     data = resp.json()
-    return data["content"][0]["text"]
+    return markdown.markdown(data["content"][0]["text"])
 
 
 def build_html_email(posts_with_summaries: list[dict], date_str: str) -> str:
@@ -214,7 +215,11 @@ def main():
             summary = summarize_post(post)
         except Exception as e:
             print(f"   ⚠ Summarization failed: {e}")
-            summary = f"(Summary unavailable — <a href='{post['link']}'>read the original</a>)"
+            error_detail = str(e).replace('<', '&lt;').replace('>', '&gt;')
+            summary = (
+                f"(Summary unavailable — <a href='{post['link']}'>read the original</a>)"
+                f"<br><small style='color:#b00;'>❌ {error_detail}</small>"
+            )
         results.append({"post": post, "summary": summary})
 
     date_str = datetime.now(timezone.utc).strftime("%B %d, %Y")
