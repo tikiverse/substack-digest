@@ -13,6 +13,7 @@ from datetime import datetime, timedelta, timezone
 from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
 from pathlib import Path
+from concurrent.futures import ThreadPoolExecutor, as_completed
 import markdown
 
 import feedparser
@@ -53,8 +54,10 @@ def load_feeds() -> list[str]:
 
 def fetch_new_posts(feeds: list[str], since: datetime) -> list[dict]:
     """Fetch posts published after `since` from all feeds."""
-    posts = []
-    for feed_url in feeds:
+    import re
+
+    def _fetch_feed(feed_url):
+        feed_posts = []
         try:
             parsed = feedparser.parse(feed_url)
             blog_title = parsed.feed.get("title", feed_url)
@@ -75,10 +78,9 @@ def fetch_new_posts(feeds: list[str], since: datetime) -> list[dict]:
                 elif entry.get("summary"):
                     content = entry.summary
                 # Strip HTML tags (basic)
-                import re
                 content = re.sub(r"<[^>]+>", " ", content)
                 content = re.sub(r"\s+", " ", content).strip()
-                posts.append({
+                feed_posts.append({
                     "blog": blog_title,
                     "title": entry.get("title", "Untitled"),
                     "link": entry.get("link", ""),
@@ -87,6 +89,12 @@ def fetch_new_posts(feeds: list[str], since: datetime) -> list[dict]:
                 })
         except Exception as e:
             print(f"⚠ Error fetching {feed_url}: {e}")
+        return feed_posts
+
+    posts = []
+    with ThreadPoolExecutor(max_workers=10) as executor:
+        for feed_posts in executor.map(_fetch_feed, feeds):
+            posts.extend(feed_posts)
     return posts
 
 
@@ -207,10 +215,11 @@ def main():
         print("😴 No new posts — skipping digest.")
         return
 
-    print("🤖 Summarizing with Claude…")
-    results = []
-    for i, post in enumerate(posts, 1):
-        print(f"   [{i}/{len(posts)}] {post['title']}")
+    print(f"🤖 Summarizing {len(posts)} posts with Claude (parallel)…")
+    results = [None] * len(posts)
+
+    def _summarize(i, post):
+        print(f"   [{i+1}/{len(posts)}] {post['title']}")
         try:
             summary = summarize_post(post)
         except Exception as e:
@@ -220,7 +229,13 @@ def main():
                 f"(Summary unavailable — <a href='{post['link']}'>read the original</a>)"
                 f"<br><small style='color:#b00;'>❌ {error_detail}</small>"
             )
-        results.append({"post": post, "summary": summary})
+        return i, {"post": post, "summary": summary}
+
+    with ThreadPoolExecutor(max_workers=5) as executor:
+        futures = [executor.submit(_summarize, i, post) for i, post in enumerate(posts)]
+        for future in as_completed(futures):
+            i, result = future.result()
+            results[i] = result
 
     date_str = datetime.now(timezone.utc).strftime("%B %d, %Y")
     html = build_html_email(results, date_str)
