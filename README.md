@@ -4,7 +4,7 @@ Daily email digest of your Substack subscriptions, summarized by Claude.
 
 ## How it works
 
-`digest.py` reads `feeds.json`, fetches RSS feeds, summarizes new posts with Claude, and emails you a digest. Runs daily via GitHub Actions (`.github/workflows/digest.yml`, 7 AM UTC).
+`digest.py` reads `feeds.json`, fetches RSS feeds, summarizes new posts with Claude, and emails you a digest. Runs daily via GitHub Actions (`.github/workflows/digest.yml`).
 
 ### GitHub Actions setup
 
@@ -14,9 +14,13 @@ Daily email digest of your Substack subscriptions, summarized by Claude.
 |--------|-------------|
 | `ANTHROPIC_API_KEY` | Claude API key |
 | `SMTP_USER` | Email sender (e.g. Gmail address) |
-| `SMTP_PASS` | App password (not account password) |
+| `SMTP_PASS` | [App password](https://support.google.com/accounts/answer/185833?hl=en) (not account password) |
 
-**Variables** (optional): `SMTP_HOST` (default: `smtp.gmail.com`), `SMTP_PORT` (default: `587`), `EMAIL_TO` (default: `SMTP_USER`).
+**Variables** (optional):
+
+- `EMAIL_TO` (default: `SMTP_USER`)
+- `SMTP_HOST` (default: `smtp.gmail.com`)
+- `SMTP_PORT` (default: `587`)
 
 **Optional env overrides**: `LOOKBACK_HOURS` (26), `MAX_CHARS_PER_POST` (8000), `CLAUDE_MODEL`.
 
@@ -28,7 +32,7 @@ Test via **Actions** tab > **Run workflow**.
 
 ```bash
 # One-time setup
-playwright install chromium
+uv run playwright install chromium
 
 # Add your session cookie (DevTools > Application > Cookies > substack.sid)
 echo 'SUBSTACK_SID=your-cookie-value' > .env
